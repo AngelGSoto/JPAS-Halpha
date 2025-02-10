@@ -1,0 +1,238 @@
+#+TITLE: Detection of Emission Line Objects in JPAS
+#+SUBTITLE: Analysis of Planetary Nebulae (PNe) and Symbiotic Stars
+#+AUTHOR: Luis A. Gutiérrez Soto
+#+EMAIL: gsoto.angel@gmail.com
+#+DATE: 2025-02-10
+#+DESCRIPTION: Project aimed at identifying and analyzing emission line objects, such as Planetary Nebulae (PNe) and Symbiotic Stars, using data from the JPAS survey.
+#+KEYWORDS: JPAS, Planetary Nebulae, Symbiotic Stars, Emission Lines, Astronomy
+
+* Workflow Overview
+** Data Pipeline
+1. Data Acquisition → [[file:JPAS-data-v2.py][Script]]
+2. Spectral Analysis → [[file:SED-analysis.org][SED Construction]]
+3. Candidate Selection → [[file:PNe-identification.org][PN Identification]]
+
+* Data Acquisition
+** Script Specifications
+- File: [[file:JPAS-data-v2.py][JPAS-data-v2.py]]
+- Output Directory: =Data/=
+- Runtime: ~20-60 mins (dependiendo del volumen)
+
+** Photometric Data Structure
+*** Core Columns
+| Column Name               | Description                          | Units  |
+|---------------------------+--------------------------------------+--------|
+| mag_aper_6_0              | Raw aperture magnitudes              | AB mag |
+| mag_aper_cor_6_0          | Aperture-corrected magnitudes        | AB mag |
+| mag_err_aper_6_0          | Raw magnitude errors                 | AB mag |
+| mag_err_aper_cor_6_0      | Corrected magnitude errors           | AB mag |
+| class_star                | Stellar classification score         | [0-1]  |
+
+*** Filter Arrays
+- =mag_aper_6_0=: Array[56] de magnitudes en filtros JXXXX/iSDSS
+- =mag_aper_cor_6_0=: Versión corregida del array anterior
+- Orden de filtros: Coincide con =jpas_filters_metadata.fits=
+
+** Quality Control Protocol
+*** Pre-processing Filters
+1. Error Thresholds:
+   - =mag_err_aper_6_0[jpas::J0660] < 0.4=
+   - =mag_err_aper_6_0[jpas::iSDSS] < 0.4=
+2. Data Flags:
+   - =mask_flags = 0= (sin artefactos)
+   - =flags <= 3= (calidad básica)
+
+*** Post-processing Steps
+1. Magnitude Binning:
+   #+BEGIN_SRC python
+   bins = [(13.0,16.0), (16.0,17.5), (17.5,18.5), 
+           (18.5,19.5), (19.5,23.0)]
+   #+END_SRC
+
+2. Stellar Contamination:
+   - Cross-match con =xmatch_gaia_dr3=
+   - Corte morfológico: =class_star < 0.2=
+
+* Scientific Context
+** Aperture Correction Rationale
+- Critical para: 
+  - Objetos extendidos (radio > 3 arcsec)
+  - Fotometría comparativa entre filtros
+  - Análisis de perfiles de luz
+
+- Methodology:
+  #+BEGIN_SRC python
+  def apply_aperture_correction(flux, psf_model):
+      """Extrapola flujo a apertura infinita"""
+      correction_factor = calculate_psf_growth(psf_model)
+      return flux * correction_factor
+  #+END_SRC
+
+** Key Filter Characteristics
+| Filter | λ_central (Å) | Width (Å) | Key Line (z=0) |
+|--------|---------------|-----------|----------------|
+| J0660  | 6600          | 145       | Hα             |
+| J0450  | 4500          | 145       | [O III]        |
+| iSDSS  | 7680          | 1380      | Continuum      |
+
+* Data Access Tutorial
+** Loading Data
+#+BEGIN_SRC python :exports code
+import numpy as np
+from astropy.table import Table
+
+# Cargar datos y metadatos
+data = Table.read("Data/jpas_bin_1_13.0to16.0i.fits")
+filters = Table.read("Data/jpas_filters_metadata.fits")
+
+# Mapear nombres de filtros a índices
+filter_idx = {name: idx for idx, name in enumerate(filters['name'])}
+j0660_mags = data['mag_aper_cor_6_0'][:, filter_idx['J0660']]
+#+END_SRC
+
+** Visualization Example
+#+BEGIN_SRC python :exports code
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(12,6))
+plt.errorbar(filters['wavelength'], 
+            data[0]['mag_aper_cor_6_0'],
+            yerr=data[0]['mag_err_aper_cor_6_0'],
+            fmt='o')
+plt.gca().invert_yaxis()
+plt.xlabel("Wavelength (Å)")
+plt.ylabel("AB Magnitude")
+plt.title("Example SED for obj_id: {}".format(data[0]['obj_id']))
+#+END_SRC
+
+* Next Steps
+1. [[file:SED-analysis.org][Spectral Energy Distribution Analysis]]
+   - Construcción de fotoespectros
+   - Identificación de líneas de emisión
+
+2. [[file:PNe-identification.org][PN Candidate Selection]]
+   - Corte en diagramas color-color
+   - Validación espectroscópica
+     
+* Pseudo-r Filter Construction
+** Scientific Rationale
+To replicate the S-PLUS =(r - J0660) vs (r - i)= diagram in JPAS, we construct a pseudo-r filter using narrow-band filters surrounding Hα (6563 Å).
+
+*** Filter Combination Options
+| Combination Type | Filters Used           | Wavelength Coverage | Best For          |
+|-------------------|------------------------|---------------------|-------------------|
+| Symmetric Average | =(J0515 + J0660)/2=    | 5150-6600Å          | General Case      |
+| Blue-weighted     | =(0.7*J0430 + 0.3*J0515)= | 4300-5150Å       | High-z Objects    |
+| Red-weighted      | =(0.4*J0515 + 0.6*J0660)= | 5150-6600Å       | Strong Hα Emitters|
+
+** Implementation Workflow
+*** Data Acquisition Modifications
+#+BEGIN_SRC python
+query = """
+SELECT 
+    obj_id,
+    mag_aper_cor_6_0[jpas::J0430] AS J0430,
+    mag_aper_cor_6_0[jpas::J0515] AS J0515,
+    mag_aper_cor_6_0[jpas::J0660] AS J0660,
+    mag_aper_cor_6_0[jpas::iSDSS] AS iSDSS,
+    mag_err_aper_cor_6_0[jpas::J0430] AS e_J0430,
+    mag_err_aper_cor_6_0[jpas::J0515] AS e_J0515,
+    flags[jpas::J0660] AS flags_Hα
+FROM jpas.MagABDualObj
+WHERE mag_aper_cor_6_0[jpas::iSDSS] BETWEEN 13 AND 23
+"""
+#+END_SRC
+
+*** Post-processing Steps
+#+BEGIN_SRC python :exports code
+def calculate_pseudo_r(data, combo_type='symmetric'):
+    """
+    Calculate pseudo-r magnitude from JPAS filters
+    """
+    if combo_type == 'symmetric':
+        data['r_pseudo'] = 0.5 * (data['J0515'] + data['J0660'])
+        data['e_r_pseudo'] = 0.5 * np.sqrt(data['e_J0515']**2 + data['e_J0660']**2)
+    elif combo_type == 'blue-weighted':
+        data['r_pseudo'] = 0.7*data['J0430'] + 0.3*data['J0515']
+        data['e_r_pseudo'] = np.sqrt((0.7*data['e_J0430'])**2 + (0.3*data['e_J0515'])**2)
+    return data
+
+# Calculate colors
+data = calculate_pseudo_r(data)
+data['rJ0660'] = data['r_pseudo'] - data['J0660']
+data['riSDSS'] = data['r_pseudo'] - data['iSDSS']
+#+END_SRC
+
+** Selection Criteria
+*** Color-Color Diagram Parameters
+| Parameter         | Initial Value | Expected Range | Physical Meaning               |
+|-------------------|---------------|----------------|---------------------------------|
+| rJ0660 Threshold  | > 0.8         | 0.5-1.2        | Equivalent to EW(Hα) > 20Å     |
+| riSDSS Cut        | < 1.0         | 0.8-1.5        | Rejects stellar contaminants    |
+
+*** Visualization Code
+#+BEGIN_SRC python :exports code
+def plot_color_diagram(data):
+    plt.figure(figsize=(10,8))
+    plt.scatter(data['riSDSS'], data['rJ0660'], 
+                c=data['J0660'], cmap='viridis', 
+                alpha=0.6, s=10)
+    plt.plot([0.5, 2.0], [0.8, 0.8], 'r--', lw=1)  # Hα excess cutoff
+    plt.plot([1.0, 1.0], [0.0, 3.0], 'b--', lw=1)  # Stellar sequence cutoff
+    plt.colorbar(label='J0660 Magnitude')
+    plt.xlabel(r"$(r_{\rm pseudo} - i_{\rm SDSS})$", fontsize=12)
+    plt.ylabel(r"$(r_{\rm pseudo} - J0660)$", fontsize=12)
+    plt.title("JPAS Hα Emitter Selection", fontsize=14)
+    plt.show()
+#+END_SRC
+
+* Validation Protocol
+** Spectroscopic Cross-check
+#+BEGIN_SRC python :exports code
+validation_query = """
+SELECT p.obj_id, p.r_pseudo, s.Halpha_flux, s.[OIII]_flux
+FROM processed_data p
+JOIN spectroscopic_catalog s ON p.obj_id = s.obj_id
+WHERE p.rJ0660 > 0.8
+"""
+#+END_SRC
+
+** Expected Performance
+| Metric          | Goal      | JPAS Advantage          |
+|-----------------|-----------|-------------------------|
+| Completeness    | >85%      | Better redshift coverage|
+| Contamination   | <15%      | Narrow filters reduce stellar confusion |
+| Photometric Accuracy | σ < 0.1 mag | Multi-filter constraints |
+
+* Integration with Existing Workflow
+1. <<Data Acquisition>>: Modified query includes necessary filters
+2. <<Color Calculation>>: Post-processing step added
+3. <<Candidate Selection>>: New color-color criteria implemented
+4. <<Validation>>: Cross-matching with external catalogs
+
+* Adjustable Parameters
+#+BEGIN_SRC yaml
+pseudo_r:
+  combinations:
+    - name: symmetric
+      weights: [0.5, 0.5]
+      filters: [J0515, J0660]
+    - name: blue-optimized
+      weights: [0.7, 0.3] 
+      filters: [J0430, J0515]
+  selection:
+    halpha_excess: 0.8  # Adjust based on luminosity function
+    color_cut: 1.0      # Modify for different stellar populations
+#+END_SRC
+
+* Next Steps
+1. Run initial test with symmetric combination
+2. Compare color distributions with S-PLUS DR4
+3. Fine-tune weights using known PNe spectra
+4. Implement final selection in [[file:PNe-identification.org]]
+
+#+BEGIN_COMMENT
+Note: The pseudo-r methodology allows retrospective adjustment
+without reprocessing raw data. All color calculations are performed
+in post-processing for maximum flexibility.
+#+END_COMMENT
