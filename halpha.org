@@ -186,6 +186,89 @@ def plot_color_diagram(data):
     plt.show()
 #+END_SRC
 
+* Selección de Emisores Hα en JPAS (Nebulosas Planetarias y Estrellas Simbióticas)
+** Contexto
+- Objetivo: Adaptar metodología de S-PLUS (diagrama (r - J0660) vs. (r - i)) a JPAS
+- Reto principal: JPAS no tiene filtro r-broadband
+- Filtros clave JPAS:
+  #+BEGIN_SRC
+  uJAVA, J0378, ..., J0660 (Hα), ..., iSDSS
+  #+END_SRC
+
+** Solución Propuesta
+*** Pseudo-filtro r
+- Combinar filtros cercanos a 625 nm (r-band de S-PLUS):
+  #+BEGIN_SRC
+  J0600, J0610, J0620, J0630, J0640, J0650 (600-650 nm)
+  #+END_SRC
+- Método de síntesis:
+  - Promedio ponderado o suma de flujos
+  - Alternativa simple: usar J0630 (630 nm) como proxy
+
+*** Diagrama Color-Color Adaptado
+| Eje Vertical (Exceso Hα) | Eje Horizontal (Pendiente Continuo) |
+|--------------------------+--------------------------------------|
+| (pseudo-r - J0660)       | (pseudo-r - iSDSS)                   |
+
+- Fórmulas:
+  #+BEGIN_SRC
+  pseudo-r = avg(J0600, J0610, J0620, J0630, J0640, J0650)
+  Eje Y: pseudo-r - J0660
+  Eje X: pseudo-r - iSDSS
+  #+END_SRC
+
+** Implementación
+*** Opción 1: Combinación de Filtros
+1. Sintetizar pseudo-r:
+   #+BEGIN_SRC python
+   # Ejemplo en Python (flux en erg/s/cm²/Å)
+   pseudo_r = np.mean([flux_J0600, flux_J0610, flux_J0620, 
+                      flux_J0630, flux_J0640, flux_J0650])
+   #+END_SRC
+
+2. Calcular colores:
+   #+BEGIN_SRC python
+   color_y = pseudo_r - flux_J0660  # Exceso Hα
+   color_x = pseudo_r - flux_iSDSS  # Continuum
+   #+END_SRC
+
+*** Opción 2 (Simplificada): Usar J0630 como r
+- Diagrama alternativo:
+  #+BEGIN_SRC
+  Eje Y: (J0630 - J0660)
+  Eje X: (J0630 - iSDSS)
+  #+END_SRC
+
+** Validación
+- Comparar pseudo-r con r-band de S-PLUS usando espectros estelares
+- Ajustar pesos de los filtros si hay desviaciones sistemáticas
+- Verificar contaminación de [N II] en J0660 (JPAS FWHM ~145 Å → mínimo)
+
+** Diagnósticos Adicionales (JPAS)
+- Usar [O III] (J0510) para discriminación:
+  #+BEGIN_SRC
+  (J0510 - J0660) vs. (J0660 - J0860)
+  #+END_SRC
+- Nebulosas planetarias: Altas emisiones en J0510 ([O III]) y J0660 (Hα)
+- Estrellas simbióticas: Combinación Hα + [O III]
+
+** Workflow Recomendado
+1. Sintetizar pseudo-r (combinación de 6 filtros o J0630)
+2. Calcular colores adaptados
+3. Seleccionar objetos con:
+   - Alto exceso Hα (valores altos en eje Y)
+   - Pendiente de continuo típica de objetos nebulares (eje X)
+4. Filtrar con [O III] (J0510) para eliminar contaminantes
+
+** Notas Importantes
+- Ventaja JPAS: Filtros estrechos (~145 Å) → mejor sensibilidad a líneas que S-PLUS
+- Limitar muestra a objetos con SNR > 5 en J0660 y J0510
+- Considerar corrección por extinción galáctica si Z > 0.3
+
+#+BEGIN_SRC text
+Contacto: [Tu nombre/email] para implementación técnica o ajustes
+#+END_SRC
+
 * Validation Protocol
 ** Spectroscopic Cross-check
 #+BEGIN_SRC python :exports code

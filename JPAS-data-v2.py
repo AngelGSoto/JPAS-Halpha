@@ -1,6 +1,6 @@
 """
 Script to download JPAS data with corrected/uncorrected photometry
-Integrado con documentación org-mode
+Luis A. Gutiérrez Soto
 """
 import pyvo.dal
 from pyvo.auth import authsession, securitymethods
@@ -15,25 +15,6 @@ import os
 warnings.simplefilter("ignore")
 output_dir = "Data"
 os.makedirs(output_dir, exist_ok=True)
-
-# ==================== FUNCIÓN DE LIMPIEZA ====================
-def limpiar_resultados_anteriores(service):
-    """Elimina resultados de consultas anteriores del servidor"""
-    try:
-        print("\nIniciando limpieza de resultados antiguos...")
-        trabajos = service.search_jobs(phase="COMPLETED")
-        
-        for trabajo in trabajos:
-            print(f"Eliminando trabajo: {trabajo.job_id}")
-            try:
-                trabajo.delete()
-            except Exception as e:
-                print(f"Error eliminando {trabajo.job_id}: {str(e)}")
-            time.sleep(1)  # Evitar sobrecarga del servidor
-        
-        print("Limpieza completada correctamente\n")
-    except Exception as e:
-        print(f"Error en proceso de limpieza: {str(e)}")
 
 # ==================== AUTENTICACIÓN ====================
 tap_url = "https://archive.cefca.es/catalogues/vo/tap/jpas-idr202406"
@@ -56,10 +37,6 @@ service = pyvo.dal.TAPService(tap_url, session=authsession.AuthSession().set_cre
     securitymethods.ANONYMOUS, pyvo.dal.tap.s
 ))
 
-# Limpiar resultados previos
-limpiar_resultados_anteriores(service)
-
-
 query = """
 SELECT 
     tile_id,
@@ -77,8 +54,8 @@ SELECT
     mag_err_aper_cor_6_0[jpas::J0430] AS err_J0430_cor,
     mag_aper_cor_6_0[jpas::J0450] AS mag_J0450,  -- Alternativa 2 para pseudo-r
     mag_err_aper_cor_6_0[jpas::J0450] AS err_J0450_cor,
-    mag_aper_cor_6_0[jpas::J0515] AS mag_J0515,  -- Componente pseudo-r
-    mag_err_aper_cor_6_0[jpas::J0515] AS err_J0515_cor,
+    mag_aper_cor_6_0[jpas::J0515] AS mag_J0510,  -- Componente pseudo-r
+    mag_err_aper_cor_6_0[jpas::J0515] AS err_J0510_cor,
     mag_aper_cor_6_0[jpas::J0660] AS mag_J0660,  -- Hα
     mag_err_aper_cor_6_0[jpas::J0660] AS err_J0660_cor,
     mag_aper_6_0[jpas::iSDSS] AS mag_i,

@@ -9,9 +9,14 @@ import requests
 import pyvo
 from astropy.table import Table
 import warnings
+import os
 
 # Ignorar warnings
 warnings.simplefilter("ignore")
+
+# Crear directorio Data si no existe
+if not os.path.exists("Data"):
+    os.makedirs("Data")
 
 # URL del servicio TAP de JPAS
 tap_url = "https://archive.cefca.es/catalogues/vo/tap/jpas-idr202406"
@@ -37,61 +42,88 @@ service = pyvo.dal.TAPService(tap_url, session=auth)
 # Consulta modificada para incluir ambas fotometrías
 query = """
 SELECT 
-    obj_id,
+    NUMBER,
     alpha_j2000,
     delta_j2000,
     tile_id,
-    mag_aper_6_0[jpas::iSDSS] AS mag_iSDSS,       -- Magnitud sin corregir
-    mag_aper_cor_6_0[jpas::iSDSS] AS mag_iSDSS_cor,  -- Magnitud corregida
-    mag_err_aper_6_0[jpas::iSDSS] AS err_iSDSS,      -- Error sin corregir
-    mag_err_aper_cor_6_0[jpas::iSDSS] AS err_iSDSS_cor, -- Error corregido
-    mag_aper_6_0,          -- Array de magnitudes sin corregir (56 filtros)
-    mag_aper_cor_6_0,      -- Array de magnitudes corregidas (56 filtros)
-    mag_err_aper_6_0,      -- Array de errores sin corregir
-    mag_err_aper_cor_6_0,  -- Array de errores corregidos
-    class_star,
-    flags,
-    mask_flags
+    mag_aper_cor_6_0[jpas::J0600] AS mag_J0600_cor,
+    mag_aper_cor_6_0[jpas::J0610] AS mag_J0610_cor,
+    mag_aper_cor_6_0[jpas::J0620] AS mag_J0620_cor,
+    mag_aper_cor_6_0[jpas::J0630] AS mag_J0630_cor,
+    mag_aper_cor_6_0[jpas::J0640] AS mag_J0640_cor,
+    mag_aper_cor_6_0[jpas::J0650] AS mag_J0650_cor,
+    mag_err_aper_cor_6_0[jpas::J0600] AS err_J0600_cor,
+    mag_err_aper_cor_6_0[jpas::J0610] AS err_J0610_cor,
+    mag_err_aper_cor_6_0[jpas::J0620] AS err_J0620_cor,
+    mag_err_aper_cor_6_0[jpas::J0630] AS err_J0630_cor,
+    mag_err_aper_cor_6_0[jpas::J0640] AS err_J0640_cor,
+    mag_err_aper_cor_6_0[jpas::J0650] AS err_J0650_cor,
+    mag_aper_cor_6_0[jpas::J0660] AS mag_J0660_cor,
+    mag_aper_cor_6_0[jpas::iSDSS] AS mag_iSDSS_cor,
+    mag_err_aper_cor_6_0[jpas::J0660] AS err_J0660_cor,
+    mag_err_aper_cor_6_0[jpas::iSDSS] AS err_iSDSS_cor,
+    flags[jpas::J0660] AS flags_J0660,
+    flags[jpas::iSDSS] AS flags_iSDSS,
+    mask_flags[jpas::J0660] AS mask_J0660,
+    mask_flags[jpas::iSDSS] AS mask_iSDSS,
+    class_star
 FROM 
     jpas.MagABDualObj 
 WHERE 
-    mag_err_aper_6_0[jpas::J0660] < 0.4   -- Filtramos por error sin corregir (o corregido, según prefieras)
-    AND mag_err_aper_6_0[jpas::iSDSS] < 0.4
-    AND mask_flags = 0 
-    AND flags <= 3
+    mag_err_aper_cor_6_0[jpas::J0600] < 0.4
+    AND mag_err_aper_cor_6_0[jpas::J0610] < 0.4
+    AND mag_err_aper_cor_6_0[jpas::J0620] < 0.4
+    AND mag_err_aper_cor_6_0[jpas::J0630] < 0.4
+    AND mag_err_aper_cor_6_0[jpas::J0640] < 0.4
+    AND mag_err_aper_cor_6_0[jpas::J0650] < 0.4
+    AND mag_err_aper_cor_6_0[jpas::J0660] < 0.4
+    AND mag_err_aper_cor_6_0[jpas::iSDSS] < 0.4
+    AND mask_flags[jpas::J0660] = 0 
+    AND mask_flags[jpas::iSDSS] = 0          
+    AND flags[jpas::J0660] <= 3
+    AND flags[jpas::iSDSS] <= 3
 """
 
 try:
     # Ejecutar consulta
     job = service.run_async(query)
     table = job.to_table()
+    # Verificar nombres de columnas
+    print("Columnas disponibles:", table.colnames)
 except pyvo.DALQueryError as e:
     print(f"Error en la consulta: {e}")
     exit()
 
-# Definir los bins de magnitud (usando magnitudes sin corregir, pero puedes elegir las corregidas)
+# Definir los bins de magnitud
 bins = [
     (13.0, 16.0),
     (16.0, 17.5),
     (17.5, 18.5),
     (18.5, 19.5),
-    (19.5, 23.0)
+    (19.5, 23.0),
+    (23.0, 24.0)
 ]
 
-# Guardar cada bin en archivos separados
+# Guardar cada bin en archivos separados con limpieza de metadatos
 for i, (min_mag, max_mag) in enumerate(bins, start=1):
-    mask = (table["mag_iSDSS"] >= min_mag) & (table["mag_iSDSS"] < max_mag)
-    bin_data = table[mask]
-    filename = f"Data/jpas_bin_{i}_{min_mag}to{max_mag}i.fits"
-    bin_data.write(filename, overwrite=True)
-    print(f"Bin {i} ({min_mag} ≤ i < {max_mag}): {len(bin_data)} objetos guardados en {filename}")
+    try:
+        mask = (table["mag_isdss_cor"] >= min_mag) & (table["mag_isdss_cor"] < max_mag)
+        bin_data = table[mask]
+        
+        # Limpiar metadatos problemáticos
+        bin_data.meta = {}  # Limpiar metadatos de la tabla
+        for col in bin_data.columns:
+            if 'description' in bin_data[col].meta:
+                del bin_data[col].meta['description']
+        
+        filename = f"Data/jpas_bin_{i}_{min_mag}to{max_mag}i.fits"
+        bin_data.write(filename, overwrite=True, format='fits')
+        print(f"Bin {i} ({min_mag} ≤ i < {max_mag}): {len(bin_data)} objetos guardados en {filename}")
+    
+    except KeyError as ke:
+        print(f"Error en bin {i}: {ke}")
+        print("Verifica los nombres de las columnas en la tabla")
+        print("Columnas disponibles:", table.colnames)
+        exit()
 
-# Descargar metadatos de filtros
-try:
-    filter_query = "SELECT name, central, width FROM jpas.Filter ORDER BY central"
-    filter_job = service.run_async(filter_query)
-    filter_table = filter_job.to_table()
-    filter_table.write("Data/jpas_filters.fits", overwrite=True)
-    print("Metadatos de filtros guardados en jpas_filters.fits")
-except pyvo.DALQueryError as e:
-    print(f"Error al descargar metadatos de filtros: {e}")
+
