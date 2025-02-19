@@ -10,7 +10,7 @@
 ** Data Pipeline
 1. Data Acquisition → [[file:JPAS-data-v2.py][Script]]
 2. Spectral Analysis → [[file:SED-analysis.org][SED Construction]]
-3. Candidate Selection → [[file:PNe-identification.org][PN Identification]]
+3. Candidate Selection → [[file:Selecting_halpha.py][PN Identification]]
 
 * Data Acquisition
 ** Script Specifications
@@ -319,3 +319,7 @@ Note: The pseudo-r methodology allows retrospective adjustment
 without reprocessing raw data. All color calculations are performed
 in post-processing for maximum flexibility.
 #+END_COMMENT
+
+to run the script to select the Halpha emitter:
+
+: python ../programs/Selecting_halpha.py jpas_bin_3_17.5to18.5i.fits  -o ../Halpha_emitters/Halpha_test_17_185.csv --variance_method "Mine"
