@@ -1,6 +1,6 @@
 """
 Script para selección de emisores Hα en JPAS
-Autor: Tu Nombre
+Autor: Luis A. Gutiérrez Soto
 Versión: 1.1 (JPAS adaptado)
 Requisitos: Python 3.8+, astropy, numpy, pandas
 """
