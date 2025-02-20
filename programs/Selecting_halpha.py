@@ -134,21 +134,19 @@ def main():
         
         all_candidates.append(candidates)
 
+    # ... (parte inicial del código se mantiene igual)
+
     # 5. Consolidar y guardar resultados ======================================
     print("\nGuardando resultados...")
     final_df = pd.concat(all_candidates, ignore_index=True)
     
-    # Columnas de salida
-    output_cols = [
-        'number', 'alpha_j2000', 'delta_j2000', 'tile_id',
-        'pseudo_r', 'mag_isdss_cor', 'mag_j0660_cor',
-        'color_x', 'color_y', 'sigma_int', 'slope', 'intercept',
-        'e_pseudo_r', 'err_isdss_cor', 'err_j0660_cor',
-        'flags_j0660', 'flags_isdss', 'class_star'
-    ]
+    # Ordenar columnas: originales primero, nuevas al final
+    original_columns = df.columns.tolist()
+    new_columns = list(final_df.columns.difference(original_columns))
+    final_df = final_df[original_columns + new_columns]
     
-    # Guardar con formato
-    final_df[output_cols].to_csv(
+    # Guardar todos los campos
+    final_df.to_csv(
         args.output,
         index=False,
         float_format="%.4f",
@@ -157,6 +155,8 @@ def main():
     
     print(f"\n✅ Proceso completado! {len(final_df)} candidatos guardados en:")
     print(f"📄 {os.path.abspath(args.output)}")
+
+# ... (resto del código se mantiene igual)
 
 if __name__ == "__main__":
     main()
